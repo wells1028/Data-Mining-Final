@@ -1,0 +1,1006 @@
+---
+title: "Final"
+author: "Trish Wells"
+date: "3/17/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(e1071)
+library(pander)
+library(klaR)
+library(nnet)
+library(rpart)
+library(rpart.plot)
+library(party)
+library(ROCR)
+library(caret)
+library(adabag)
+library(readxl)
+library(forecast)
+library(neuralnet)
+```
+
+# 1. Model Comparison
+
+## A. Make sure your data set is balanced – you will want to do that yourself.  Describe and justify your method for balancing the data set.  
+
+
+First, I looked at the summary statistics of all my variables. This showed that my predictor variables were all similar in scale. Then I created a histogram of the variable I am trying to classify, rings. Rings approximate the age of the abalone while the other features are used as predictors. Rings is an integer variable and ranged from 1 to 29. For this exercise, I binned this variable so as to classify observations as either above or below a certain age. The histogram showed that rings are approximately normally distributed and the median value was 9. This was key in determining how I was going to bin this variable so as to create a well balanced data set. 
+
+I binned this variable by having values 0 to 9 be represented by a zero, and values 10 to 29 be represented by a one. By using this split, approximately half of my observations were responder variables with the other half non-responder. This allows plenty of positive case/responder observations to accurately classify future cases of the positive case. This relatively even split helps to prevent my models from being biased toward the more prevalent case.
+
+
+```{r }
+df <- read.csv("abalone.csv")
+
+
+pander(summary(df))
+
+hist(df$rings)
+df$rings <- ifelse(df$rings < 10, 0, 1)
+hist(df$rings)
+df$sex <- as.factor(df$sex)
+df$rings <- as.factor(df$rings)
+```
+
+## B. Use two different sizes of the data set.  The sizes should be different by a magnitude of at least two times.  For instance, two sizes – 50 and 100.
+
+
+My two main datasets are called:
+
+- df (4,177 observations)
+
+- smalldf (2,000 observations)
+
+
+My training/test sets are split 70%/30% and are called:
+
+- bigdf.train (2,903 observations)
+
+- bigdf.test (1,274 observations)
+
+- smalldf.train (1,384 observations)
+
+- smalldf.test (616 observations)
+
+
+```{r }
+set.seed(2)
+
+s1 <- sample(2, nrow(df), replace = TRUE, prob=c(0.7, 0.3))
+
+bigdf.train <- df[s1==1,]
+bigdf.test <- df[s1==2,]
+
+# create smaller df
+index <- sample(2, nrow(df), replace = TRUE, prob=c(0.5, 0.5))
+smalldf <- df[index==1,]
+smalldf <- smalldf[1:2000,]
+
+s2 <- sample(2, nrow(smalldf), replace = TRUE, prob=c(0.7, 0.3))
+
+smalldf.train <- smalldf[s2==1,]
+smalldf.test <- smalldf[s2==2,]
+
+```
+
+
+## C. Run both classifiers for the data.  You should have eight results -Two for each classifier times two for each size times two for the train and test set.
+
+
+
+
+```{r}
+# First we will do decision tree for the big dataset
+
+big.rp <- rpart(rings ~ ., bigdf.train)
+
+# To view the decision tree
+rpart.plot(big.rp)
+
+# predict classes on the training and test sets
+big.rp.train <- predict(big.rp, type="class", bigdf.train)
+big.rp.pred <- predict(big.rp, type="class", bigdf.test)
+
+# confusion matrices
+cm1 <- confusionMatrix(big.rp.train, bigdf.train[,9])
+cm2 <- confusionMatrix(big.rp.pred, bigdf.test[,9])
+
+big.rp.train.accuracy <- cm1$overall[['Accuracy']]
+big.rp.test.accuracy <- cm2$overall[['Accuracy']]
+
+# Now decision tree for the small dataset
+
+small.rp <- rpart(rings ~ ., smalldf.train)
+
+# To view the decision tree
+rpart.plot(small.rp)
+
+# predict classes on the training and test sets
+small.rp.train <- predict(small.rp, type="class", smalldf.train)
+small.rp.pred <- predict(small.rp, type="class", smalldf.test)
+
+# confusion matrices
+cm3 <- confusionMatrix(small.rp.train, smalldf.train[,9])
+cm4 <- confusionMatrix(small.rp.pred, smalldf.test[,9])
+
+small.rp.train.accuracy <- cm3$overall[['Accuracy']]
+small.rp.test.accuracy <- cm4$overall[['Accuracy']]
+
+```
+
+```{r}
+# Next we will use a neural network.
+
+big.nn <- nnet(rings ~ ., bigdf.train, size=1)
+
+
+# predict classes on the training and test sets
+big.nn.train <- predict(big.nn, type="class", bigdf.train)
+big.nn.pred <- predict(big.nn, type="class", bigdf.test)
+
+# confusion matrices
+cm5 <- confusionMatrix(as.factor(big.nn.train), bigdf.train[,9])
+cm6 <- confusionMatrix(as.factor(big.nn.pred), bigdf.test[,9])
+
+big.nn.train.accuracy <- cm5$overall[['Accuracy']]
+big.nn.test.accuracy <- cm6$overall[['Accuracy']]
+
+# Now neural network for the small dataset
+
+small.nn <- nnet(rings ~ ., smalldf.train, size=1)
+
+# predict classes on the training and test sets
+small.nn.train <- predict(small.nn, type="class", smalldf.train)
+small.nn.pred <- predict(small.nn, type="class", smalldf.test)
+
+# confusion matrices
+cm7 <- confusionMatrix(as.factor(small.nn.train), smalldf.train[,9])
+cm8 <- confusionMatrix(as.factor(small.nn.pred), smalldf.test[,9])
+
+small.nn.train.accuracy <- cm7$overall[['Accuracy']]
+small.nn.test.accuracy <- cm8$overall[['Accuracy']]
+```
+
+
+## My final eight results are as follows:
+
+
+```{r}
+cm1
+cm2
+cm3
+cm4
+cm5
+cm6
+cm7
+cm8
+
+```
+
+
+## D. Compare the result of the different classifiers. Which classifier model would you use and why?
+
+
+As seen below, the average accuracy of the neural network models was 78.8%, slightly higher than the average decision tree accuracy of 78.4%. When using the larger data set, the decision tree's accuracy remained consistent at 78.3% between the training and test set. However, when using the smaller data set, the decision tree's accuracy on the training set was 81.0% while the test set's accuracy significantly decreased to 76.1%. This is indicative of overfitting.
+
+When testing the neural network models, there were no significant decreases in accuracy when moving from the training set to the test set. In all cases except the overfit decision tree model, the neural network models either performed as good as or better than the decision tree models. Due to this, I would use the neural network model.
+
+
+```{r}
+(Accuracy <- rbind(big.rp.train.accuracy,
+      big.rp.test.accuracy,
+      small.rp.train.accuracy,
+      small.rp.test.accuracy,
+      big.nn.train.accuracy,
+      big.nn.test.accuracy,
+      small.nn.train.accuracy,
+      small.nn.test.accuracy))
+
+(avg.rp.accuracy <- (big.rp.train.accuracy+
+                      big.rp.test.accuracy+
+                      small.rp.train.accuracy+
+                      small.rp.test.accuracy)/4)
+
+(avg.nn.accuracy <- (big.nn.train.accuracy+
+                       big.nn.test.accuracy+
+                       small.nn.train.accuracy+
+                       small.nn.test.accuracy)/4)
+```
+
+
+## E. Using bagging and boosting and the same data sets carry out the same  analysis as above. 
+
+
+
+```{r, cache=TRUE}
+#create big bagging model
+big.bag <- bagging(rings ~ ., bigdf.train)
+
+# predict classes on big training and test sets
+big.bag.train <- predict(big.bag, bigdf.train, type="class")
+big.bag.pred <- predict(big.bag, bigdf.test, type="class")
+
+
+# confusion matrices
+cmb1 <- confusionMatrix(as.factor(big.bag.train$class), bigdf.train[,9])
+cmb2 <- confusionMatrix(as.factor(big.bag.pred$class), bigdf.test[,9])
+
+big.bag.train.accuracy <- cmb1$overall[['Accuracy']]
+big.bag.test.accuracy <- cmb2$overall[['Accuracy']]
+
+#Create small bagging model
+small.bag <- bagging(rings ~ ., smalldf.train)
+
+# predict classes on small training and test sets
+small.bag.train <- predict(small.bag, smalldf.train, type="class")
+small.bag.pred <- predict(small.bag, smalldf.test, type="class")
+
+
+# confusion matrices
+cmb3 <- confusionMatrix(as.factor(small.bag.train$class), smalldf.train[,9])
+cmb4 <- confusionMatrix(as.factor(small.bag.pred$class), smalldf.test[,9])
+
+small.bag.train.accuracy <- cmb3$overall[['Accuracy']]
+small.bag.test.accuracy <- cmb4$overall[['Accuracy']]
+```
+
+```{r, cache=TRUE}
+#create big boosting model
+big.boost <- boosting(rings ~ ., bigdf.train)
+
+# predict classes on big training and test sets
+big.boost.train <- predict(big.boost, bigdf.train, type="class")
+big.boost.pred <- predict(big.boost, bigdf.test, type="class")
+
+
+# confusion matrices
+cmboost1 <- confusionMatrix(as.factor(big.boost.train$class), bigdf.train[,9])
+cmboost2 <- confusionMatrix(as.factor(big.boost.pred$class), bigdf.test[,9])
+
+big.boost.train.accuracy <- cmboost1$overall[['Accuracy']]
+big.boost.test.accuracy <- cmboost2$overall[['Accuracy']]
+
+#Create small boosting model
+small.boost <- boosting(rings ~ ., smalldf.train)
+
+# predict classes on small training and test sets
+small.boost.train <- predict(small.boost, smalldf.train, type="class")
+small.boost.pred <- predict(small.boost, smalldf.test, type="class")
+
+
+# confusion matrices
+cmboost3 <- confusionMatrix(as.factor(small.boost.train$class), smalldf.train[,9])
+cmboost4 <- confusionMatrix(as.factor(small.boost.pred$class), smalldf.test[,9])
+
+small.boost.train.accuracy <- cmboost3$overall[['Accuracy']]
+small.boost.test.accuracy <- cmboost4$overall[['Accuracy']]
+```
+
+
+## The results of the bagged and boosted models are shown below. 
+
+The average accuracy of the bagged models was 79.3%, significantly lower than the average accuracy of the boosted models of 84.6%. However, the average accuracy of the boosted models was skewed by 99.9% accuracy on the boosted training set of the smaller data set. Due to the significant drop in accuracy on the test set, it is safe to say that this training data was significantly overfit. 
+
+The boosted models' fit on the larger data set was more accurate than any of the bagged models. Due to this, I would use the boosted model. However, I would only use it on the larger data set. If I had a smaller data set, I would use the bagged model.
+
+
+```{r}
+# My final eight results are as follows:
+cmb1
+cmb2
+cmb3
+cmb4
+cmboost1
+cmboost2
+cmboost3
+cmboost4
+
+(Accuracy.bb <- rbind(big.bag.train.accuracy,
+      big.bag.test.accuracy,
+      small.bag.train.accuracy,
+      small.bag.test.accuracy,
+      big.boost.train.accuracy,
+      big.boost.test.accuracy,
+      small.boost.train.accuracy,
+      small.boost.test.accuracy))
+
+(avg.bag.accuracy <- (big.bag.train.accuracy+
+                      big.bag.test.accuracy+
+                      small.bag.train.accuracy+
+                      small.bag.test.accuracy)/4)
+
+(avg.boost.accuracy <- (big.boost.train.accuracy+
+                       big.boost.test.accuracy+
+                       small.boost.train.accuracy+
+                       small.boost.test.accuracy)/4)
+```
+
+
+## F.	Compare the results of classifiers and the bagging/boosting results.
+
+The classifier models decision tree and neural networks had lower average accuracies compared to the bagged and boosted models. As seen below, the decision tree and neural network models' accuracies averaged 78.4% and 78.8%, respectively. This is lower than the bagged models' average accuracy of 79.3% and boosted models' average accuracy of 84.6%. However, as noted above, this is significantly skewed due to overfitting on the boosted training model on the smaller data set. In looking at the models created using the larger data set, the classifier models did not perform as accurately as the boosted and bagged models.
+
+
+```{r}
+(Avg.Accuracy <- rbind(avg.rp.accuracy,
+                      avg.nn.accuracy,
+                      avg.bag.accuracy,
+                      avg.boost.accuracy))
+
+avg.big.class <- (big.nn.train.accuracy+
+  big.nn.test.accuracy+
+  big.rp.train.accuracy+
+  big.rp.test.accuracy)/4
+
+avg.small.class <- (small.nn.train.accuracy+
+  small.nn.test.accuracy+
+  small.rp.train.accuracy+
+  small.rp.test.accuracy)/4
+
+avg.big.bb <- (big.bag.train.accuracy+
+                 big.bag.test.accuracy+
+                 big.boost.train.accuracy+
+                 big.boost.test.accuracy)/4
+
+avg.small.bb <- (small.bag.train.accuracy+
+                 small.bag.test.accuracy+
+                 small.boost.train.accuracy+
+                 small.boost.test.accuracy)/4
+
+data.frame(avg.big.class, avg.big.bb, avg.small.class, avg.small.bb)
+
+```
+
+
+
+# 2. Exploring
+
+## A. Schools in Portland Public School District are affected by churn.	Describe how you would go about developing a churn prediction model and discuss how you would derive input variables.    
+
+
+To develop a churn model, I would first obtain the schools' historic churn data. This would provide a good starting point by seeing what data the school currently collects/tracks. At a minimum, it should be enough data to develop a student profile for each churned student. This information should include:
+
+
+- Age/grade
+
+- Race
+
+- Address
+
+- How long they've attended that school
+
+- When they churned (beginning, middle, end of school year)
+
+- Why the churned (via exit surveys or notes in file). 
+
+
+In addition to this information tracked by schools, I would also want to use the median family income by neighborhood. I can derive the neighborhood from the students' address using data from the US Census Bureau. Similarly, the median family income for those neighborhoods would be obtained from the US Census Bureau.
+
+
+Since it appears the significant churn is related to rent increases, I would also want to obtain historical rent values so I could calculate change in rent. This information can be found on the Portland Housing Bureau's website. Similarly, as low income families are more likely to rent than own a house, I would want to know each neighborhood's percentage of renters. This can also be found via the Portland Housing Bureau, or via the Census Bureau. Finally, I would also want median home value by neighborhood as changing home values could signal changes in rent. This could be obtained from a site like Zillow or Redfin.
+
+
+## B. Provide a churn model in conceptual form.
+
+`Churn_Value = M(Grade, Race, Time.Attended, Median.Income, Change.in.Rent, Home.Value)`
+
+
+## C. Create your own sample data (fictitious) to determine the Churn_Value. Keep it small. You only want to provide an example.
+
+
+
+```{r}
+churn <- read.csv("churn.csv")
+
+churn
+```
+
+
+# 3. Understanding Measures
+
+## We have used several classification costs besides accuracy.   Below is the r-code for deriving a specific measure – F1-measure (also known as F score for the given table.
+
+```{r}
+# Precision: tp/(tp+fp):
+# df[1,1]/sum(df[1,1:2])
+# [1] 0.4625
+# Recall: tp/(tp + fn):
+# df[1,1]/sum(df[1:2,1])
+# [1] 0.6607143
+# F-Score: 2 * precision * recall /(precision + recall):
+# 2 * 0.4625 * 0.6607143 / (0.4625 + 0.6607143)
+# [1] 0.5441177
+
+```
+
+
+## A. Review the results for the two models below. Calculate the accuracy (% correct), precision, recall, and F-Score and enter the results here.
+
+
+## Model 1 
+
+- Accuracy: 0.739
+
+- Precision: 0.512
+
+- Recall: 0.979
+
+- F-Score: 0.672
+
+
+## Model 2
+
+- Accuracy: 0.983
+
+- Precision: 0.495
+
+- Recall: 0.292
+
+- F-Score: 0.367
+
+## See below for work.
+
+
+```{r}
+(model1 <- data.frame(PREDICTED.E = c(512,11), PREDICTED.A = c(488,899)))
+
+(model1.accuracy <- (model1[1,1] + model1[2,2]) / sum(model1[1:2,1:2]))
+
+(model1.precision <- model1[1,1]/sum(model1[1,1:2]))
+
+(model1.recall <- model1[1,1]/sum(model1[1:2,1]))
+
+(model1.Fscore <- 2 * model1.precision * model1.recall/ (model1.precision + model1.recall))
+
+# Now Model 2
+(model2 <- data.frame(PREDICTED.E = c(495,1203), PREDICTED.A = c(505,98797)))
+
+(model2.accuracy <- (model2[1,1] + model2[2,2]) / sum(model2[1:2,1:2]))
+
+(model2.precision <- model2[1,1]/sum(model2[1,1:2]))
+
+(model2.recall <- model2[1,1]/sum(model2[1:2,1]))
+
+(model2.Fscore <- 2 * model2.precision * model2.recall/ (model2.precision + model2.recall))
+
+
+```
+
+
+## B. Discuss the differences in the scores between them. Which model is better? Why? Which measures are more useful and why?
+
+
+Model 1 has lower accuracy at 0.739, but ranks higher in the other metrics. Particularly, it has a much higher recall, meaning it does a better job of predicting the important class members.  
+
+
+Model 2 has significantly more A's than E's, resulting in a class imbalance. It accurately predicted 98,797 A's and misclassified 1203 A's. The model inaccurately predicted more true E's as A's than actual predicted E's. This is something to look out for when you have one class significantly over represented. The accuracy of this model is much higher due to the number of A's accurately predicted as A's.
+
+
+Which model performs better depends on misclassification costs. If it is more important to accurately predict A's, then model two is better. Assuming our important class is E, model one is the best as indicated by its recall value.
+
+
+The F1 score also indicates that model one is the better model after taking into account both the precision and recall scores. F1 is also useful when classes are imbalanced, such as in model two.
+
+
+# 4. Logistic Regression
+
+## An experiment is performed to test the effect of a toxic substance on insects. At each of the six dose levels, 250 insects are exposed to the substance and the number of insects that die is counted. Below is a summary of the data.
+
+
+```{r}
+(dose <- data.frame(Dose = c(1,2,3,4,5,6), SampSize = c(250,250,250,250,250,250), Deaths = c(28,53,93,126,172,197)))
+
+```
+
+
+## A. Interpret the output.
+
+
+Since this is a logistic regression, we know that our outcome variable is a probability between zero and one. This model uses dose as a predictor and its coefficient is 0.674. This is a non-linear model so this is the coefficient that maximizes the likelihood of obtaining the data that we have, within a 95% confidence interval. Dose has an odds ratio of 1.9621, indicating that bugs having had one dose are 1.9621 times more likely to die compared to bugs that have not had a dose.
+
+
+## B. Use the data set called LRTest.xls associated with this test to conduct logistic regression. Confirm that you get the same results as the output shown. Show your output here.
+
+
+I get the same results. They are shown below.
+
+
+```{r}
+dose.df <- read_excel("LRTEST.xls")
+dose.df$Death <- as.factor(dose.df$Death)
+
+logfit <- glm(Death ~ ., data = dose.df, family = "binomial")
+options(scipen = 999)
+summary(logfit)
+
+```
+
+
+## C. Calculate the observed probabilities as the number of observed deaths out of 250 for each dose level. 
+
+
+See below.
+
+
+```{r}
+dose$Observed.Prob <- dose$Deaths / dose$SampSize
+
+dose
+```
+
+## D. Calculate the predicted probabilities.
+
+
+See below.
+
+
+```{r}
+death.pred <- predict(logfit, dose.df[,1], type = "response")
+
+# Since there is only one predictor, dose, there are only six different predictions (one for each dose).
+
+dose$Predicted.Prob <- round(unique(death.pred), 3)
+
+dose
+
+```
+
+
+# 5. Association Rules
+
+
+## Describe an application of association rules method.  Do not base your discussion on purchases such as  grocery store transactions.   You want to apply it in another area – marketing, healthcare, finance, law enforcement, fraud, etc.  You want to include in the discussion of the benefit, the specific aspects of the application, and the potential itemset content.
+
+
+An application of the association rules method is in law enforcement. As the details about crimes and/or incidents are stored in databases, it makes it easier than ever to implement association rules and glean insights to increase efficiencies and safety.
+
+**Aspects of application**
+
+- Details are collected and stored in law enforcement databases.
+
+
+-  Generate candidate rules and identify frequent itemsets via the Apriori Algorithm.
+
+  + Review all possible combinations of items for association rules and select those that have enough support for the validity of the rule.
+  
+  + Generate recursive itemsets starting with one and increasing from there.
+  
+  + Select the rules that maximize confidence and lift ratio.
+  
+
+- Use these rules to find patterns in crimes and incidents, such as what crimes tend to happen where, and if time affects the types and occurrences of crime.
+
+
+- Use this information to increase efficiencies:
+
+  + Increase patrols in high crime areas.
+  
+  + Increase visibility.
+  
+  + Implement community outreach programs.
+  
+  + Allocate resources for crime prevention.
+  
+
+**Benefits**
+
+- Can potentially reduce crime or rates of incidents by proactively placing officers in high crime areas.
+
+- Identifies vulnerable groups of people and/or areas where resources can be allocated.
+
+- Can increase visibility which may help community relations as well as reduce crime.
+
+- Allows law enforcement to see where they should be focusing their human capital, e.g. hiring more crisis negotiators vs hiring more traffic officers.
+
+
+**Potential Itemsets**
+
+- Date/Time
+
+- Type of crime
+
+- Race/Ethnicity of offender and victim
+  
+- Ages of offender and victim
+  
+- Gender of offender and victim
+  
+- Location
+  
+- Weapons involved
+
+
+**Example Rules**
+
+- IF: Location = A & Weapon = Knife
+
+  + THEN: Crime = Robbery
+  
+- IF: Location = C & Time = 8pm - 10pm 
+
+  + THEN: Crime = Domestic Violence & Race = White
+  
+
+
+# 6. Neural Network
+
+
+## A. You will conduct 8 experiments using any dataset and any neural network implementation. Vary the learning rate (2 different ones) as well as the number of hidden layers (2 different ones) as well as nodes per layer (2 different ones).
+
+
+The eight models are going to be:
+
+```{r, echo=FALSE}
+(nnmodels<-data.frame(Model = c(1,2,3,4,5,6,7,8),
+Learning = c(1,1,1,1,0.5,0.5,0.5,0.5),
+Hidden = c(1,2,2,1,2,1,1,2),
+Nodes = c(1,1,2,2,2,1,2,1)))
+```
+
+
+```{r}
+money <- read.csv("money.csv")
+money$Class <- as.factor(money$Class)
+summary(money)
+
+# Normalize
+norm <- preProcess(money[,1:4], method = "range")
+money[,1:4] <- predict(norm, money[,1:4])
+summary(money)
+
+
+# Split into train/test
+set.seed(2)
+rearrange <- sample(nrow(money))
+money <- money[rearrange,]
+
+s2 <- sample(2, nrow(money), replace = TRUE, prob=c(0.7, 0.3))
+
+money.train <- money[s2==1,]
+money.test <- money[s2==2,]
+
+
+# Now for the neural networks
+
+# 1 (one layer one node)
+money.nn1 <- neuralnet(Class ~ ., money.train, linear.output = F, hidden = c(1), learningrate = 1)
+
+plot(money.nn1)
+
+nn1.pred <- compute(money.nn1, money.test)
+nn1.predclass <- apply(nn1.pred$net.result, 1, which.max)-1
+(nn1.accuracy <- confusionMatrix(as.factor(ifelse(nn1.predclass == "0", "0", "1")), money.test$Class))
+a1 <- nn1.accuracy$overall[['Accuracy']]
+
+# 2 (two layers with one node)
+money.nn2 <- neuralnet(Class ~ ., money.train, linear.output = F, hidden = c(1,1), learningrate = 1)
+
+plot(money.nn2)
+
+nn2.pred <- compute(money.nn2, money.test)
+nn2.predclass <- apply(nn2.pred$net.result, 1, which.max)-1
+(nn2.accuracy <- confusionMatrix(as.factor(ifelse(nn2.predclass == "0", "0", "1")), money.test$Class))
+a2 <- nn2.accuracy$overall[['Accuracy']]
+
+# 3 (two layers two nodes)
+money.nn3 <- neuralnet(Class ~ ., money.train, linear.output = F, hidden = c(2,2), learningrate = 1)
+
+plot(money.nn3)
+
+nn3.pred <- compute(money.nn3, money.test)
+nn3.predclass <- apply(nn3.pred$net.result, 1, which.max)-1
+(nn3.accuracy <- confusionMatrix(as.factor(ifelse(nn3.predclass == "0", "0", "1")), money.test$Class))
+a3 <- nn3.accuracy$overall[['Accuracy']]
+
+# 4 (one layer two nodes)
+money.nn4 <- neuralnet(Class ~ ., money.train, linear.output = F, hidden = c(2), learningrate = 1)
+
+plot(money.nn4)
+
+nn4.pred <- compute(money.nn4, money.test)
+nn4.predclass <- apply(nn4.pred$net.result, 1, which.max)-1
+(nn4.accuracy <- confusionMatrix(as.factor(ifelse(nn4.predclass == "0", "0", "1")), money.test$Class))
+a4 <- nn4.accuracy$overall[['Accuracy']]
+
+# 5 (0.5 rate, two layers two nodes)
+money.nn5 <- neuralnet(Class ~ ., money.train, linear.output = F, hidden = c(2,2), learningrate = 0.5)
+
+plot(money.nn5)
+
+nn5.pred <- compute(money.nn5, money.test)
+nn5.predclass <- apply(nn5.pred$net.result, 1, which.max)-1
+(nn5.accuracy <- confusionMatrix(as.factor(ifelse(nn5.predclass == "0", "0", "1")), money.test$Class))
+a5 <- nn5.accuracy$overall[['Accuracy']]
+
+
+# 6 (0.5 rate, one layer one node)
+money.nn6 <- neuralnet(Class ~ ., money.train, linear.output = F, hidden = c(1), learningrate = 0.5)
+
+plot(money.nn6)
+
+nn6.pred <- compute(money.nn6, money.test)
+nn6.predclass <- apply(nn6.pred$net.result, 1, which.max)-1
+(nn6.accuracy <- confusionMatrix(as.factor(ifelse(nn6.predclass == "0", "0", "1")), money.test$Class))
+a6 <- nn6.accuracy$overall[['Accuracy']]
+
+
+# 7 (0.5 rate, one layer two nodes)
+money.nn7 <- neuralnet(Class ~ ., money.train, linear.output = F, hidden = c(2), learningrate = 0.5)
+
+plot(money.nn7)
+
+nn7.pred <- compute(money.nn7, money.test)
+nn7.predclass <- apply(nn7.pred$net.result, 1, which.max)-1
+(nn7.accuracy <- confusionMatrix(as.factor(ifelse(nn7.predclass == "0", "0", "1")), money.test$Class))
+a7 <- nn7.accuracy$overall[['Accuracy']]
+
+
+# 8 (0.5 rate, two layers one node)
+money.nn8 <- neuralnet(Class ~ ., money.train, linear.output = F, hidden = c(1,1), learningrate = 0.5)
+
+plot(money.nn8)
+
+nn8.pred <- compute(money.nn8, money.test)
+nn8.predclass <- apply(nn8.pred$net.result, 1, which.max)-1
+(nn8.accuracy <- confusionMatrix(as.factor(ifelse(nn8.predclass == "0", "0", "1")), money.test$Class))
+a8 <- nn8.accuracy$overall[['Accuracy']]
+
+
+```
+
+
+## B. Compare the results and discuss the outcomes.
+
+
+See the accuracy results below. On the whole, the accuracy of each model was high, accurately classifying at least 99% of all test observations. However, four of the eight models obtained 100% accuracy. These models had one thing in common: They contained two nodes. As such, we can conclude that the additional node improved the neural networks' accuracy.
+
+```{r, echo=FALSE}
+nnmodels$Accuracy = c(a1,a2,a3,a4,a5,a6,a7,a8)
+nnmodels
+```
+
+
+# 7. K-Means
+
+
+## Customer segmentation identifies customers into distinct groups.  You want to examine  a set of customers and identify those that behave similarly to tailor marketing.  You want to group them on the basis of purchases of four products.
+
+
+## Group the individuals into three clusters using K-Means cluster method and the Euclidean distance measure. Show each step in how records are added to a cluster.  This will be based on the mean vector (centroids). Remember the mean vector is recalculated each time a new member is added to the cluster.   At the end you will want to make sure that each record is assigned to the closest mean.   
+
+## A. Applying K Means: Pick random K centroids and then iteratively assign all other points to one of the K clusters by looking for the smallest distance to the centroids.  In this case  use K = 3 and determine the customers in the  three clusters. 
+
+## 1. Start by calculating the distance of each customer from the three starting centroids. Use  Euclidean Distance to measure how far apart the  customers are from the centroids. Starting with Cluster # 1 and determine which cluster the customers belong to.
+
+
+
+See work below. The customers are assigned to their first cluster in column "Closest1", representing the closest cluster based on Euclidean distance.
+
+
+```{r}
+(cust <- data.frame(Customer = c(1:20),
+                       ProductA = c(0,0,1,1,1,0,1,1,1,0,0,1,1,0,0,0,1,0,0,0),
+                       ProductB = c(0,1,1,1,0,0,0,1,0,0,0,1,0,1,1,0,0,0,1,1),
+                       ProductC = c(1,0,0,0,0,1,1,0,0,1,1,0,1,0,0,1,0,0,1,0),
+                       ProductD = c(1,1,0,1,0,0,1,0,0,1,1,0,0,0,1,1,0,1,1,1)))
+
+(clusters.0 <- data.frame(Cluster = c(1:3),
+                       ProductA = c(1,0,0),
+                       ProductB = c(1,1,1),
+                       ProductC = c(0,1,0),
+                       ProductD = c(1,1,1)))
+
+
+# Iteration #1
+# Customer 1 distance from the three clusters
+# sqrt[(cluster.prodA - customer.prodA)^2 +
+# (clust.prodB-cust.prodB)^2 + 
+# (cluster.ProdC-cust.prodC)^2 + 
+# cluster.prodD - customerProdD)^2]
+
+cust$C1.1 <- c(rep(0,20))
+cust$C2.1 <- c(rep(0,20))
+cust$C3.1 <- c(rep(0,20))
+
+for (i in 1:20) {
+  
+
+cust[i,6] <- round(sqrt((clusters.0[1,2] - cust[i,2])^2 +
+  (clusters.0[1,3] - cust[i,3])^2 +
+  (clusters.0[1,4] - cust[i,4])^2 + 
+  (clusters.0[1,5] - cust[i,5])^2),3)
+
+cust[i,7] <- round(sqrt((clusters.0[2,2] - cust[i,2])^2 +
+  (clusters.0[2,3] - cust[i,3])^2 +
+  (clusters.0[2,4] - cust[i,4])^2 + 
+  (clusters.0[2,5] - cust[i,5])^2),3)
+
+cust[i,8] <- round(sqrt((clusters.0[3,2] - cust[i,2])^2 +
+  (clusters.0[3,3] - cust[i,3])^2 +
+  (clusters.0[3,4] - cust[i,4])^2 + 
+  (clusters.0[3,5] - cust[i,5])^2),3)
+
+}
+
+## Now do determine the lowest distance to assign the Cluster.
+cust$Closest1 <- ifelse(apply(cust[,6:8], 1, min) == cust$C1.1, 1,
+       ifelse(apply(cust[,6:8], 1, min) == cust$C2.1, 2, 3))
+
+```
+
+
+## Here are the cluster assignments after one iteration.
+
+```{r}
+cust[,c(1,9)]
+```
+
+
+## 2. Update the centroids.
+
+```{r}
+# Initialize new centroids dataframe
+clusters.1 <- data.frame(Cluster = c(1,2,3))
+
+# Calculate averages of clusters for new centroids.
+clusters.1[1,2:5] <- cust %>% filter(Closest1==1) %>% 
+  summarize(ProductA = mean(ProductA),
+            ProductB = mean(ProductB),
+            ProductC = mean(ProductC),
+            ProductD = mean(ProductD)) %>%
+  round(3)
+
+clusters.1[2,2:5] <- cust %>% filter(Closest1==2) %>% 
+  summarize(ProductA = mean(ProductA),
+            ProductB = mean(ProductB),
+            ProductC = mean(ProductC),
+            ProductD = mean(ProductD)) %>%
+  round(3)
+
+clusters.1[3,2:5] <- cust %>% filter(Closest1==3) %>% 
+  summarize(ProductA = mean(ProductA),
+            ProductB = mean(ProductB),
+            ProductC = mean(ProductC),
+            ProductD = mean(ProductD)) %>%
+  round(3)
+
+
+clusters.1
+```
+
+
+## 3. Repeat steps 1 and 2 for three iterations. Determine the cluster assignments for the customers after the end of three iterations.
+
+
+We have already completed one iteration and updated the centroids. Now we need to do this twice more.
+
+```{r}
+# Iteration #2
+
+# Initialize columns for the second iteration results
+
+cust$C1.2 <- c(rep(0,20))
+cust$C2.2 <- c(rep(0,20))
+cust$C3.2 <- c(rep(0,20))
+
+for (i in 1:20) {
+  
+
+cust[i,10] <- round(sqrt((clusters.1[1,2] - cust[i,2])^2 +
+  (clusters.1[1,3] - cust[i,3])^2 +
+  (clusters.1[1,4] - cust[i,4])^2 + 
+  (clusters.1[1,5] - cust[i,5])^2),3)
+
+cust[i,11] <- round(sqrt((clusters.1[2,2] - cust[i,2])^2 +
+  (clusters.1[2,3] - cust[i,3])^2 +
+  (clusters.1[2,4] - cust[i,4])^2 + 
+  (clusters.1[2,5] - cust[i,5])^2),3)
+
+cust[i,12] <- round(sqrt((clusters.1[3,2] - cust[i,2])^2 +
+  (clusters.1[3,3] - cust[i,3])^2 +
+  (clusters.1[3,4] - cust[i,4])^2 + 
+  (clusters.1[3,5] - cust[i,5])^2),3)
+
+}
+
+## Now determine the lowest distance to assign the Cluster.
+cust$Closest2 <- ifelse(apply(cust[,10:12], 1, min) == cust$C1.2, 1,
+       ifelse(apply(cust[,10:12], 1, min) == cust$C2.2, 2, 3))
+```
+
+## Here are the updated cluster assignments after the second iteration.
+
+
+```{r}
+cust[,c(1,13)]
+
+```
+
+
+## Now update the centroids and perform the third and final iteration.
+
+
+```{r}
+# Initialize new centroids dataframe
+clusters.2 <- data.frame(Cluster = c(1,2,3))
+
+# Calculate averages of clusters for new centroids.
+clusters.2[1,2:5] <- cust %>% filter(Closest2==1) %>% 
+  summarize(ProductA = mean(ProductA),
+            ProductB = mean(ProductB),
+            ProductC = mean(ProductC),
+            ProductD = mean(ProductD)) %>%
+  round(3)
+
+clusters.2[2,2:5] <- cust %>% filter(Closest2==2) %>% 
+  summarize(ProductA = mean(ProductA),
+            ProductB = mean(ProductB),
+            ProductC = mean(ProductC),
+            ProductD = mean(ProductD)) %>%
+  round(3)
+
+clusters.2[3,2:5] <- cust %>% filter(Closest2==3) %>% 
+  summarize(ProductA = mean(ProductA),
+            ProductB = mean(ProductB),
+            ProductC = mean(ProductC),
+            ProductD = mean(ProductD)) %>%
+  round(3)
+```
+
+
+## Here are the new centroids.
+
+
+```{r}
+clusters.2
+```
+
+
+## Now the final iteration.
+
+
+```{r}
+# Iteration #3
+
+# Initialize columns for the third iteration results
+
+cust$C1.3 <- c(rep(0,20))
+cust$C2.3 <- c(rep(0,20))
+cust$C3.3 <- c(rep(0,20))
+
+for (i in 1:20) {
+  
+
+cust[i,14] <- round(sqrt((clusters.2[1,2] - cust[i,2])^2 +
+  (clusters.2[1,3] - cust[i,3])^2 +
+  (clusters.2[1,4] - cust[i,4])^2 + 
+  (clusters.2[1,5] - cust[i,5])^2),3)
+
+cust[i,15] <- round(sqrt((clusters.2[2,2] - cust[i,2])^2 +
+  (clusters.2[2,3] - cust[i,3])^2 +
+  (clusters.2[2,4] - cust[i,4])^2 + 
+  (clusters.2[2,5] - cust[i,5])^2),3)
+
+cust[i,16] <- round(sqrt((clusters.2[3,2] - cust[i,2])^2 +
+  (clusters.2[3,3] - cust[i,3])^2 +
+  (clusters.2[3,4] - cust[i,4])^2 + 
+  (clusters.2[3,5] - cust[i,5])^2),3)
+
+}
+
+## Now determine the lowest distance to assign the Cluster.
+cust$Closest3 <- ifelse(apply(cust[,14:16], 1, min) == cust$C1.3, 1,
+       ifelse(apply(cust[,14:16], 1, min) == cust$C2.3, 2, 3))
+```
+
+## Here are the updated cluster assignments after the third and final iteration.
+
+
+```{r}
+cust[,c(1,17)]
+
+```
